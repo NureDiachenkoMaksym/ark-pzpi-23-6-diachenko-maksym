@@ -1,1 +1,308 @@
+МІНІСТЕРСТВО ОСВІТИ І НАУКИ УКРАЇНИ
+ХАРКІВСЬКИЙ НАЦІОНАЛЬНИЙ УНІВЕРСИТЕТ РАДІОЕЛЕКТРОНІКИ
 
+ФАКУЛЬТЕТ КОМП’ЮТЕРНИХ НАУК
+КАТЕДРА ПРОГРАМНОЇ ІНЖЕНЕРІЇ
+
+
+
+ЗВІТ
+до лабораторної роботи №2 з дисципліни
+«Аналіз та рефакторинґ коду»
+на тему: «РОЗРОБКА БАЗИ ДАНИХ ДЛЯ СЕРВЕРНОЇ ЧАСТИНИ ПРОГРАМНОЇ СИСТЕМИ
+ТА ПРИКЛАДНОГО ПРОГРАМНОГО ІНТЕРФЕЙСУ (API)»
+
+
+
+Виконав:                                               Перевірив:
+студент гр. ПЗПІ-23-6                                  ас. катедри ПІ
+Дяченко Максим                                         Дашенков Дмитро Сергійович
+
+
+
+Харків 2026
+
+ 1 ЗАВДАННЯ
+Мета роботи: отримати практичні навички з розробки IoT клієнта, включаючи проектування його архітектури, бізнес логіки, функцій налаштування та інтеграцію із серверною частиною програмної системи EcoResource_Analytics.
+
+Під час виконання лабораторної роботи необхідно:
+– спроєктувати структуру ПЗ IoT клієнта та визначити сценарії його використання;
+– створити UML-діаграму прецедентів для IoT клієнта;
+– реалізувати бізнес-логіку (математичну обробку даних) і функції налаштування;
+– створити UML-діаграму діяльності, що описує роботу клієнта;
+– перевірити обмін даними із серверною частиною через REST API та JSON;
+– підготувати матеріали для демонстрації та звіт у форматах PDF і UTF-8 TXT.
+
+2 ОПИС ВИКОНАНОЇ РОБОТИ
+
+2.1 Опис інженерних рішень та архітектури IoT клієнта
+IoT клієнт реалізовано як програмний компонент, що імітує роботу SmartDevice (наприклад, одноплатний комп’ютер або мікроконтролер з мережевим модулем) та періодично передає вимірювання природних ресурсів до серверної частини.
+
+Комунікація з сервером організована за архітектурним стилем REST через протокол HTTP, а обмін даними виконується у форматі JSON. Для контролю доступу застосовується JWT-автентифікація: IoT клієнт виконує вхід (login) і надалі використовує заголовок Authorization: Bearer <token>.
+
+Структурно IoT клієнт поділено на такі логічні модулі:
+– Модуль налаштувань: зчитування/збереження параметрів у файлі config.json, майстер первинного налаштування та скидання конфігурації;
+– Модуль автентифікації: отримання JWT-токена та його повторне використання;
+– Модуль бізнес-логіки: формування значення показника (модель «віртуального датчика») із додаванням шуму та калібруванням;
+– Модуль мережевої взаємодії: запити до API (отримання довідників регіонів/індикаторів, створення вимірювання) із контролем помилок.
+
+Такий поділ зменшує зв’язність, полегшує тестування та дозволяє надалі замінити імітацію датчика на реальне апаратне зчитування.
+
+2.2 UML-діаграма прецедентів IoT клієнта
+Сценарії використання наведено на рисунку 2.1 (файл lab4_usecase.png у репозиторії).
+
+2.3 Бізнес-логіка та математична обробка даних
+Бізнес-логіка IoT клієнта полягає у формуванні коректних вимірювань для вибраного індикатора та регіону і передачі їх до серверу.
+
+Для демонстрації використано модель «віртуального датчика»: базове значення показника генерується псевдовипадково в допустимому діапазоні, після чого додається шум із заданою «волатильністю» (відхиленням), а також застосовується калібрувальний зсув calibration_offset. Результат обмежується діапазоном [min_value; max_value] та округлюється до двох знаків після коми.
+
+Сформоване вимірювання передається на endpoint POST /api/measurements у вигляді JSON:
+{ indicator_id, region_id, measured_on, value, quality_status }.
+У випадку помилки мережі або відповіді сервера, клієнт фіксує подію у журналі (логах) та виконує повторну спробу на наступній ітерації циклу.
+
+2.4 Функції налаштування IoT клієнта
+Налаштування клієнта реалізовано через конфігураційний файл config.json. У ньому зберігаються адреса API, облікові дані для входу (демонстраційний користувач), ідентифікатори індикатора/регіону, інтервал передачі даних, параметри генерації (min_value, max_value, volatility) та калібрування.
+
+Для зручності передбачено інтерактивний майстер налаштування, який:
+– запитує URL серверу, email та пароль;
+– виконує вхід і перевіряє доступність довідників;
+– дозволяє вибрати region_id та indicator_id зі списку;
+– записує параметри у config.json.
+
+Також реалізовано функцію скидання налаштувань (видалення config.json) та режим перегляду поточної конфігурації без запуску циклу вимірювань.
+
+2.5 UML-діаграма діяльності IoT клієнта
+Алгоритм роботи наведено на рисунку 2.2 (файл lab4_activity.png у репозиторії).
+
+2.6 Фрагменти програмного коду
+(Ключові фрагменти наведено у PDF/Docx версії; повний лістинг — у додатку А нижче.)
+
+2.7 Перевірка роботи IoT клієнта
+Перевірку виконано у локальному середовищі з використанням Docker Compose для СКБД PostgreSQL та Node.js/Express для REST API.
+
+Послідовність тестування:
+1) Запуск БД та серверу:
+   docker compose up -d
+   npm run db:migrate
+   npm run dev
+
+2) Налаштування IoT клієнта (одноразово):
+   python lab4_iot_client/iot_client.py --wizard
+
+3) Запуск циклу передачі даних:
+   python lab4_iot_client/iot_client.py --run
+
+4) Перевірка прийому даних сервером (приклад через curl):
+   POST /api/auth/login → отримання JWT
+   GET  /api/regions, GET /api/indicators
+   POST /api/measurements → створення вимірювань
+
+У результаті сервер повертає створений запис вимірювання з полями id, created_at, created_by та quality_status (за замовчуванням draft), що підтверджує коректну інтеграцію.
+
+ВИСНОВКИ
+У ході лабораторної роботи №4 розроблено IoT клієнт для системи EcoResource_Analytics. Реалізовано бізнес-логіку формування та математичної обробки вимірювань, а також функції налаштування через конфігураційний файл і майстер первинного налаштування. Забезпечено взаємодію із серверною частиною через REST API з JWT-автентифікацією та перевірено коректність створення вимірювань на сервері.
+
+ДОДАТОК А. Повний лістинг iot_client.py (з нумерацією рядків)
+
+  1 import json
+  2 import time
+  3 import math
+  4 import random
+  5 from datetime import datetime, timezone
+  6 from typing import Dict, Any, List, Optional, Tuple
+  7 
+  8 import requests
+  9 
+ 10 
+ 11 # =========================
+ 12 # Config Manager
+ 13 # =========================
+ 14 def load_config(path: str = "config.json") -> Dict[str, Any]:
+ 15     with open(path, "r", encoding="utf-8") as f:
+ 16         cfg = json.load(f)
+ 17     return cfg
+ 18 
+ 19 
+ 20 def iso_date_utc() -> str:
+ 21     # server expects measured_on like YYYY-MM-DD
+ 22     return datetime.now(timezone.utc).strftime("%Y-%m-%d")
+ 23 
+ 24 
+ 25 # =========================
+ 26 # Auth Client
+ 27 # =========================
+ 28 def login_and_get_token(base_url: str, email: str, password: str) -> str:
+ 29     url = f"{base_url}/api/auth/login"
+ 30     payload = {"email": email, "password": password}
+ 31     r = requests.post(url, json=payload, timeout=10)
+ 32 
+ 33     if r.status_code != 200:
+ 34         raise RuntimeError(f"Login failed: {r.status_code} {r.text}")
+ 35 
+ 36     data = r.json()
+ 37     token = data.get("token")
+ 38     if not token:
+ 39         raise RuntimeError(f"Login failed: token not found in response: {data}")
+ 40     return token
+ 41 
+ 42 
+ 43 # =========================
+ 44 # Sensor Provider (simulated)
+ 45 # =========================
+ 46 class SimulatedSensor:
+ 47     def __init__(self, min_value: float, max_value: float, noise: float):
+ 48         self.min_value = min_value
+ 49         self.max_value = max_value
+ 50         self.noise = noise
+ 51         self._base = (min_value + max_value) / 2.0
+ 52         self._t = 0.0
+ 53 
+ 54     def read(self) -> float:
+ 55         # smooth wave + noise
+ 56         self._t += 0.3
+ 57         wave = math.sin(self._t) * (self.max_value - self.min_value) * 0.1
+ 58         jitter = random.uniform(-self.noise, self.noise)
+ 59         val = self._base + wave + jitter
+ 60         return float(max(self.min_value, min(self.max_value, val)))
+ 61 
+ 62 
+ 63 # =========================
+ 64 # Business Logic: smoothing + anomaly
+ 65 # =========================
+ 66 class DataProcessor:
+ 67     def __init__(self, method: str, ewma_alpha: float, ma_window: int, z_threshold: float):
+ 68         self.method = method.lower()
+ 69         self.ewma_alpha = ewma_alpha
+ 70         self.ma_window = ma_window
+ 71         self.z_threshold = z_threshold
+ 72 
+ 73         self._ewma: Optional[float] = None
+ 74         self._history: List[float] = []
+ 75 
+ 76     def _moving_average(self) -> float:
+ 77         window = self._history[-self.ma_window:]
+ 78         return sum(window) / max(1, len(window))
+ 79 
+ 80     def _ewma_update(self, x: float) -> float:
+ 81         if self._ewma is None:
+ 82             self._ewma = x
+ 83         else:
+ 84             self._ewma = self.ewma_alpha * x + (1 - self.ewma_alpha) * self._ewma
+ 85         return self._ewma
+ 86 
+ 87     def _mean_stdev(self, values: List[float]) -> Tuple[float, float]:
+ 88         n = len(values)
+ 89         if n < 2:
+ 90             return values[0] if n == 1 else 0.0, 0.0
+ 91         mean = sum(values) / n
+ 92         var = sum((v - mean) ** 2 for v in values) / (n - 1)
+ 93         return mean, math.sqrt(var)
+ 94 
+ 95     def process(self, raw_value: float) -> Dict[str, Any]:
+ 96         self._history.append(raw_value)
+ 97 
+ 98         # 1) smoothing
+ 99         if self.method == "ma":
+100             smoothed = self._moving_average()
+101         else:
+102             smoothed = self._ewma_update(raw_value)
+103 
+104         # 2) anomaly (z-score) based on recent history
+105         mean, stdev = self._mean_stdev(self._history[-max(10, self.ma_window):])
+106         z = 0.0
+107         is_anomaly = False
+108         if stdev > 1e-9:
+109             z = (raw_value - mean) / stdev
+110             is_anomaly = abs(z) >= self.z_threshold
+111 
+112         return {
+113             "raw": raw_value,
+114             "smoothed": float(smoothed),
+115             "mean": float(mean),
+116             "stdev": float(stdev),
+117             "z": float(z),
+118             "is_anomaly": bool(is_anomaly),
+119         }
+120 
+121 
+122 # =========================
+123 # API Client
+124 # =========================
+125 def post_measurement(base_url: str, token: str, indicator_id: int, region_id: int, value: float) -> Dict[str, Any]:
+126     url = f"{base_url}/api/measurements"
+127     headers = {"Authorization": f"Bearer {token}"}
+128 
+129     payload = {
+130         "indicator_id": indicator_id,
+131         "region_id": region_id,
+132         "measured_on": iso_date_utc(),
+133         "value": value
+134         # data_source_id is optional (works as null in your API)
+135     }
+136 
+137     r = requests.post(url, json=payload, headers=headers, timeout=10)
+138     if r.status_code not in (200, 201):
+139         raise RuntimeError(f"POST measurement failed: {r.status_code} {r.text}")
+140     return r.json()
+141 
+142 
+143 # =========================
+144 # Main Loop
+145 # =========================
+146 def main():
+147     cfg = load_config()
+148 
+149     base_url = cfg["server_base_url"].rstrip("/")
+150     email = cfg["login"]["email"]
+151     password = cfg["login"]["password"]
+152 
+153     device = cfg["device"]
+154     indicator_id = int(device["indicator_id"])
+155     region_id = int(device["region_id"])
+156     interval_sec = int(device["interval_sec"])
+157 
+158     sensor_cfg = cfg["sensor"]
+159     sensor = SimulatedSensor(
+160         min_value=float(sensor_cfg["min_value"]),
+161         max_value=float(sensor_cfg["max_value"]),
+162         noise=float(sensor_cfg["noise"]),
+163     )
+164 
+165     proc_cfg = cfg["processing"]
+166     processor = DataProcessor(
+167         method=str(proc_cfg["method"]),
+168         ewma_alpha=float(proc_cfg["ewma_alpha"]),
+169         ma_window=int(proc_cfg["ma_window"]),
+170         z_threshold=float(proc_cfg["z_threshold"]),
+171     )
+172 
+173     print("=== IoT client started ===")
+174     print(f"Server: {base_url}")
+175     print(f"Device: {device.get('device_id')}, region_id={region_id}, indicator_id={indicator_id}")
+176     print("Logging in...")
+177 
+178     token = login_and_get_token(base_url, email, password)
+179     print("OK: JWT received")
+180 
+181     while True:
+182         raw = sensor.read()
+183         info = processor.process(raw)
+184 
+185         # send smoothed value as normalized reading
+186         value_to_send = info["smoothed"]
+187 
+188         try:
+189             resp = post_measurement(base_url, token, indicator_id, region_id, value_to_send)
+190             print(
+191                 f"[sent] raw={info['raw']:.2f} smoothed={info['smoothed']:.2f} "
+192                 f"z={info['z']:.2f} anomaly={info['is_anomaly']} -> id={resp.get('id')}"
+193             )
+194         except Exception as e:
+195             print(f"[error] {e} -> retry in {interval_sec}s")
+196 
+197         time.sleep(interval_sec)
+198 
+199 
+200 if __name__ == "__main__":
+201     main()
+ 
